@@ -13,8 +13,9 @@ import SwiftUI
 
 @main
 struct ScamCheckApp: App {
-    // ⬇︎ The analyzer the app uses. Phase 1: the fake MockAnalyzer.
-    @State private var viewModel = CheckViewModel(analyzer: MockAnalyzer())
+    // ⬇︎ The analyzer the app uses.
+    // Phase 1: MockAnalyzer (fake). Phase 2: RuleBasedAnalyzer (real rules).
+    @State private var viewModel = CheckViewModel(analyzer: RuleBasedAnalyzer())
 
     var body: some Scene {
         WindowGroup {

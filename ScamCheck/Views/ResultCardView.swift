@@ -29,7 +29,7 @@ struct ResultCardView: View {
 
                 if !result.reasons.isEmpty {
                     VStack(alignment: .leading, spacing: 12) {
-                        Text("Why")
+                        Text(result.verdict == .looksFine ? "Worth noticing" : "Why")
                             .font(.headline)
                         ForEach(result.reasons) { reason in
                             ReasonRow(reason: reason)
@@ -49,8 +49,13 @@ struct ResultCardView: View {
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text("ScamCheck never blocks or deletes messages. You decide what to do.")
-                    if result.source == .mock {
+                    switch result.source {
+                    case .mock:
                         Text("Checked by the demo analyzer. This is not real scam detection yet.")
+                    case .rules:
+                        Text("Checked with built-in rules on your phone. Rules can miss new tricks.")
+                    case .llm, .combined:
+                        EmptyView()
                     }
                 }
                 .font(.footnote)
@@ -72,8 +77,10 @@ struct ResultCardView: View {
             "Several warning signs. Don't reply, pay, or share any code. If it claims to be your bank, contact them using the number on your card or their official app."
         case .suspicious:
             "Some warning signs. Before acting, check with the sender through a channel you already trust."
-        case .looksFine:
+        case .looksFine where result.reasons.isEmpty:
             "No warning signs found. That isn't a guarantee, so stay careful with links and payment requests."
+        case .looksFine:
+            "No strong warning signs, but there's one thing worth noticing below. Stay careful with links and payment requests."
         }
     }
 
@@ -138,8 +145,14 @@ private struct ReasonRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Label(reason.category.title, systemImage: reason.category.symbolName)
-                .font(.subheadline.bold())
+            HStack(alignment: .firstTextBaseline) {
+                Label(reason.category.title, systemImage: reason.category.symbolName)
+                    .font(.subheadline.bold())
+                Spacer()
+                Text(reason.strength == .strong ? "Strong sign" : "Weak sign")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
 
             Text("“\(reason.quote)”")
                 .font(.callout.bold())

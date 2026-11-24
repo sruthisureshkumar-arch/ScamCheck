@@ -74,6 +74,15 @@ nonisolated enum ReasonCategory: String, Codable, CaseIterable, Sendable {
     }
 }
 
+/// How much a single warning sign counts on its own.
+/// - strong: rarely appears in genuine messages (e.g. "share the OTP").
+/// - weak: common in scams but also in real messages (e.g. a short link).
+/// The verdict rules in VerdictPolicy.swift combine these.
+nonisolated enum SignalStrength: String, Codable, Sendable {
+    case strong
+    case weak
+}
+
 /// A position inside the message, counted in Characters (what a person sees
 /// as one letter or one emoji), not bytes. "start" is 0-based.
 nonisolated struct TextSpan: Codable, Hashable, Sendable {
@@ -101,8 +110,9 @@ nonisolated struct Reason: Identifiable, Hashable, Sendable {
     /// Where `quote` sits in the message.
     let span: TextSpan
     let explanation: String
+    let strength: SignalStrength
 
-    /// The only way to make a Reason. Returns nil if `quote` is not in
+    /// Builds a Reason by searching for `quote` in the message. Returns nil if `quote` is not in
     /// `message`, so a Reason with invented evidence cannot exist.
     ///
     /// - Parameter caseInsensitive: match "otp" against "OTP". The stored
@@ -112,7 +122,8 @@ nonisolated struct Reason: Identifiable, Hashable, Sendable {
         quote: String,
         explanation: String,
         in message: String,
-        caseInsensitive: Bool = false
+        caseInsensitive: Bool = false,
+        strength: SignalStrength = .weak
     ) {
         guard let found = QuoteLocator.locate(quote, in: message, caseInsensitive: caseInsensitive) else {
             return nil
@@ -122,6 +133,33 @@ nonisolated struct Reason: Identifiable, Hashable, Sendable {
         self.quote = found.exactText
         self.span = found.span
         self.explanation = explanation
+        self.strength = strength
+    }
+
+    /// Builds a Reason from a range a rule has already matched. Used by the
+    /// rules, because they know exactly WHERE they matched (searching for
+    /// the text again could land on an earlier copy of the same words).
+    /// Returns nil if the range does not belong to `message`.
+    init?(
+        category: ReasonCategory,
+        strength: SignalStrength,
+        range: Range<String.Index>,
+        in message: String,
+        explanation: String
+    ) {
+        guard range.lowerBound >= message.startIndex,
+              range.upperBound <= message.endIndex,
+              !range.isEmpty
+        else { return nil }
+        self.id = UUID()
+        self.category = category
+        self.quote = String(message[range])
+        self.span = TextSpan(
+            start: message.distance(from: message.startIndex, to: range.lowerBound),
+            length: message.distance(from: range.lowerBound, to: range.upperBound)
+        )
+        self.explanation = explanation
+        self.strength = strength
     }
 }
 
