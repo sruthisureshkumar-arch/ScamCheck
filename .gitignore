@@ -1,0 +1,15 @@
+# macOS
+.DS_Store
+
+# Xcode per-user state and build output
+xcuserdata/
+DerivedData/
+build/
+*.xcresult
+
+# Local secrets — never commit (see CLAUDE.md). Commit Secrets.example.xcconfig instead.
+Config/Secrets.xcconfig
+*.local.xcconfig
+
+# Local debug logs from the app
+*.debuglog
