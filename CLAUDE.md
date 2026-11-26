@@ -87,6 +87,9 @@ Rules:
 - The `ScamCheck`, `ScamCheckTests` and `ScamCheckUITests` folders are synchronized folders: any `.swift` file placed inside one is automatically part of that target. No project-file edits are needed to add files. If files are added from outside Xcode while it is open, quit and reopen Xcode (then Clean Build Folder) before building, or Xcode may not compile them.
 - Build settings worth knowing: `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor` (app target code is main-actor by default; mark pure analysis types `nonisolated` or keep them free of actor state where that matters), `SWIFT_APPROACHABLE_CONCURRENCY = YES`, `SWIFT_VERSION = 5.0` language mode.
 - Tests use Swift Testing (`import Testing`, `@Test`, `#expect`).
+- On-device AI (Foundation Models) can't be tested in this Simulator: the Simulator uses the Mac's Apple Intelligence, and the Mac (macOS 26.6) is older than the Simulator (iOS 27.2). Test AI features on the iPhone. Unit tests for decoding/validation run anywhere.
+- iOS 27 uses `LanguageModelError` (not the deprecated `LanguageModelSession.GenerationError`).
+- The assistant cannot delete files on this Mac. Leftover helper files go in `_to_delete/` (gitignored); the owner deletes that folder.
 
 ## Phases
 

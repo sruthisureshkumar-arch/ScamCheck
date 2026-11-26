@@ -92,3 +92,42 @@ Why ScamCheck is built the way it is. Newest entries at the bottom. Each entry: 
 - A request phrased with "it" ("please share it with him") after a genuine-looking OTP line isn't caught.
 - Brand-name matching inside links can misfire on unrelated words that happen to contain a short brand name (e.g. "job**sbi**n.com" contains "sbi").
 - Only English messages are handled.
+
+---
+
+## Phase 3: LLM analyzer
+
+### On-device Apple Foundation Models, not a remote LLM
+- **Alternatives:** a remote model (e.g. a cloud API) with a key in a local config file.
+- **Why:** Checked Apple's current docs (Nov 2026). My iPhone 17 Pro on iOS 27 runs Apple's larger on-device model (AFM Core Advanced). On-device means the message never leaves the phone, no API key, no network, no cost. That fits an app people paste private messages into.
+- **No remote analyzer built.** It isn't needed. In iOS 27 the Foundation Models framework accepts other model providers through its `LanguageModel` protocol, so a remote model could be added later behind the same `MessageAnalyzer` protocol.
+
+### Guided generation (`@Generable`) + Codable, instead of plain JSON text
+- **Alternatives:** ask the model for JSON as text and decode it with `JSONDecoder` (the original plan).
+- **Why:** Apple's recommended approach forces the on-device model to fill in a Swift type, so it can't return broken JSON. The same type (`LLMVerdict`) is also `Codable`, so JSON text from any other model decodes into it, and the tests build model answers from JSON. Every answer is still validated: structure being right doesn't mean content is right.
+- **Decided with:** me (asked before building).
+
+### What "validated" means (LLMVerdictValidator.swift)
+- Verdict must be one of the three; confidence must be 0–1 → otherwise the whole answer is rejected.
+- Each reason's category must be known and its quote must really be in the message → otherwise that reason is dropped, and the card says how many were hidden.
+- Capitalisation differences and quote marks around a quote are tolerated, because the words still exist in the message. The stored quote is always the message's own text.
+- "Likely scam" with no surviving evidence → lowered to "Suspicious". No strong verdict without visible evidence.
+
+### Reasons first, verdict second
+- The model fills fields in declared order. `reasons` comes before `verdict` so it commits to evidence before deciding.
+
+### Rules stay the default; AI is a second choice in a picker
+- **Why:** Rules always work. The AI can be unavailable, blocked by Apple's safety filter (scam texts mention money and threats), or slow. A picker also makes a before/after demo easy. Phase 4 will combine both.
+
+### One session per message, message length capped at 2,000 characters
+- **Why:** Each check is independent, so there's no reason to carry earlier messages in the context window. The cap keeps the prompt well inside the context size.
+
+### Testing the AI on the iPhone, not the Simulator
+- The Simulator uses the Mac's Apple Intelligence, and the Mac's macOS must be at least the Simulator's iOS version. My Mac is on macOS 26.6 and the Simulator on iOS 27.2, so AI checks are tested on the phone. Unit tests for decoding and validation don't need the model and run anywhere. The one real-model test skips itself when the model isn't available.
+
+### Fallback to Apple's permissive mode + JSON text when the safety filter blocks
+- **What happened:** Guided generation was blocked for both test messages, even a harmless "do not share" OTP alert. *(Correction: this run was in the Simulator, not the iPhone; see WRONG_ANSWERS.md. Real-device behaviour still to be checked. The fallback is kept as a safety net.)*
+- **Apple's guidance (Improving the safety of generative model output, Nov 2026):** (1) start the instructions with a clear role that gives the model permission to work in the domain; (2) for sensitive source material, use `SystemLanguageModel(guardrails: .permissiveContentTransformations)`. That mode only works for plain-text (String) answers. Guided generation always uses the default guardrails.
+- **Decision:** Try guided generation first (with the rewritten role-first instructions). If it's blocked or refused, ask again in permissive mode for JSON text and decode it with Codable. Both answers pass the same validator.
+- **Why this is acceptable:** The app only classifies messages and quotes them back. Every quote is checked against the original message, explanations are short, and the user always decides. Apple's own examples for permissive mode are similar (working with sensitive text, not generating it).
+- **Trade-off:** The JSON-text path can produce invalid JSON or a polite refusal. That becomes an `invalidAnswer` error, which Phase 4 handles (retry once, then fall back to rules).

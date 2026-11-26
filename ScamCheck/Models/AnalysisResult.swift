@@ -180,15 +180,20 @@ nonisolated struct AnalysisResult: Identifiable, Hashable, Sendable {
     let verdict: Verdict
     let reasons: [Reason]
     let source: AnalysisSource
-    /// 0...1 when the analyzer provides one (the LLM will in Phase 3).
+    /// 0...1 when the analyzer provides one (the LLM does).
     let confidence: Double?
+    /// How many reasons were thrown away because they failed validation
+    /// (e.g. the AI quoted words that aren't in the message). Shown to the
+    /// user so the app is honest about it.
+    let hiddenReasonCount: Int
 
     init(
         message: String,
         verdict: Verdict,
         reasons: [Reason],
         source: AnalysisSource,
-        confidence: Double? = nil
+        confidence: Double? = nil,
+        hiddenReasonCount: Int = 0
     ) {
         self.id = UUID()
         self.message = message
@@ -196,5 +201,6 @@ nonisolated struct AnalysisResult: Identifiable, Hashable, Sendable {
         self.reasons = reasons
         self.source = source
         self.confidence = confidence
+        self.hiddenReasonCount = hiddenReasonCount
     }
 }

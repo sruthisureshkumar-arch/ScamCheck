@@ -13,3 +13,6 @@ Config/Secrets.xcconfig
 
 # Local debug logs from the app
 *.debuglog
+
+# Temporary files the AI assistant could not delete itself
+_to_delete/

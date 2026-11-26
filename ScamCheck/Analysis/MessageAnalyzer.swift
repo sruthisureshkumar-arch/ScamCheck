@@ -22,6 +22,12 @@ nonisolated protocol MessageAnalyzer: Sendable {
     func analyze(_ message: String) async throws -> AnalysisResult
 }
 
+/// An error that carries a calm, plain-language message for the user.
+/// The view model shows `userMessage` instead of technical error text.
+nonisolated protocol UserFacingError: Error {
+    var userMessage: String { get }
+}
+
 /// Errors any analyzer may throw.
 nonisolated enum AnalyzerError: Error, Equatable {
     /// The message was empty or only spaces.

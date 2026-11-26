@@ -12,6 +12,7 @@
 //  "Allow Paste?" prompt, because tapping it is already clear permission.
 //  Reading the clipboard silently in code would trigger that prompt.
 //
+
 import SwiftUI
 
 struct ContentView: View {
@@ -25,6 +26,16 @@ struct ContentView: View {
                 Text("Paste a text, UPI request, delivery notice or job offer. ScamCheck shows what looks risky and why. You decide what to do.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
+
+                if viewModel.options.count > 1 {
+                    Picker("Checker", selection: $viewModel.selectedOptionID) {
+                        ForEach(viewModel.options) { option in
+                            Text(option.title).tag(option.id)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .disabled(isChecking)
+                }
 
                 messageBox
 

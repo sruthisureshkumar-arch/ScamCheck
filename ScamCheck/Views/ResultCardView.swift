@@ -32,7 +32,7 @@ struct ResultCardView: View {
                         Text(result.verdict == .looksFine ? "Worth noticing" : "Why")
                             .font(.headline)
                         ForEach(result.reasons) { reason in
-                            ReasonRow(reason: reason)
+                            ReasonRow(reason: reason, isFromAI: result.source == .llm)
                         }
                     }
                 }
@@ -54,8 +54,18 @@ struct ResultCardView: View {
                         Text("Checked by the demo analyzer. This is not real scam detection yet.")
                     case .rules:
                         Text("Checked with built-in rules on your phone. Rules can miss new tricks.")
-                    case .llm, .combined:
+                    case .llm:
+                        Text("Checked by Apple's on-device AI. Your message didn't leave your phone. AI can be wrong, so look at the highlighted words yourself.")
+                    case .combined:
                         EmptyView()
+                    }
+                    if let confidence = result.confidence {
+                        Text("AI confidence: \(Int((confidence * 100).rounded()))%")
+                    }
+                    if result.hiddenReasonCount > 0 {
+                        Text(result.hiddenReasonCount == 1
+                             ? "1 AI reason was hidden because its quote wasn't in your message."
+                             : "\(result.hiddenReasonCount) AI reasons were hidden because their quotes weren't in your message.")
                     }
                 }
                 .font(.footnote)
@@ -142,6 +152,7 @@ private struct VerdictHeader: View {
 
 private struct ReasonRow: View {
     let reason: Reason
+    var isFromAI = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -149,7 +160,7 @@ private struct ReasonRow: View {
                 Label(reason.category.title, systemImage: reason.category.symbolName)
                     .font(.subheadline.bold())
                 Spacer()
-                Text(reason.strength == .strong ? "Strong sign" : "Weak sign")
+                Text(isFromAI ? "AI finding" : (reason.strength == .strong ? "Strong sign" : "Weak sign"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

@@ -8,8 +8,9 @@
 //  read this state and call its methods; they contain no analysis logic.
 //
 //  HOW IT CONNECTS
-//  It is given a MessageAnalyzer when created (see ScamCheckApp.swift).
-//  Swapping the mock for the real analyzer later is a one-line change there.
+//  It is given one or more analyzers when created (see ScamCheckApp.swift).
+//  With more than one, the screen shows a picker (e.g. Rules / On-device AI)
+//  so the two can be compared side by side, which is handy in a demo.
 //
 //  `@Observable` makes SwiftUI redraw automatically when a property changes.
 //  This class runs on the main thread (the project's default), which is what
@@ -18,6 +19,13 @@
 
 import Foundation
 import Observation
+
+/// One analyzer the user can choose, with the name shown in the picker.
+struct AnalyzerOption: Identifiable {
+    let id: String
+    let title: String
+    let analyzer: any MessageAnalyzer
+}
 
 @Observable
 final class CheckViewModel {
@@ -38,10 +46,25 @@ final class CheckViewModel {
     /// setting it back to nil hides the card.
     var result: AnalysisResult?
 
-    private let analyzer: any MessageAnalyzer
+    /// All analyzers the user can pick from. Never empty.
+    let options: [AnalyzerOption]
 
-    init(analyzer: any MessageAnalyzer) {
-        self.analyzer = analyzer
+    /// The analyzer currently chosen in the picker.
+    var selectedOptionID: String
+
+    private var analyzer: any MessageAnalyzer {
+        (options.first { $0.id == selectedOptionID } ?? options[0]).analyzer
+    }
+
+    init(options: [AnalyzerOption]) {
+        precondition(!options.isEmpty, "CheckViewModel needs at least one analyzer")
+        self.options = options
+        self.selectedOptionID = options[0].id
+    }
+
+    /// Convenience for a single analyzer (used by previews and tests).
+    convenience init(analyzer: any MessageAnalyzer) {
+        self.init(options: [AnalyzerOption(id: "default", title: "Default", analyzer: analyzer)])
     }
 
     /// The Check button is only enabled when there is something to check
@@ -66,6 +89,8 @@ final class CheckViewModel {
         do {
             result = try await analyzer.analyze(messageText)
             state = .idle
+        } catch let error as UserFacingError {
+            state = .failed(error.userMessage)
         } catch {
             // Never show raw error text to the user; keep it calm and clear.
             state = .failed("Couldn't check this message. Please try again.")
