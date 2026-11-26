@@ -83,6 +83,14 @@ nonisolated enum SignalStrength: String, Codable, Sendable {
     case weak
 }
 
+/// Who found a reason: the built-in rules or the language model.
+/// Shown on each reason so the user (and an interviewer) can see where
+/// every piece of evidence came from when results are combined.
+nonisolated enum ReasonOrigin: String, Codable, Sendable {
+    case rules
+    case ai
+}
+
 /// A position inside the message, counted in Characters (what a person sees
 /// as one letter or one emoji), not bytes. "start" is 0-based.
 nonisolated struct TextSpan: Codable, Hashable, Sendable {
@@ -111,6 +119,7 @@ nonisolated struct Reason: Identifiable, Hashable, Sendable {
     let span: TextSpan
     let explanation: String
     let strength: SignalStrength
+    let origin: ReasonOrigin
 
     /// Builds a Reason by searching for `quote` in the message. Returns nil if `quote` is not in
     /// `message`, so a Reason with invented evidence cannot exist.
@@ -123,7 +132,8 @@ nonisolated struct Reason: Identifiable, Hashable, Sendable {
         explanation: String,
         in message: String,
         caseInsensitive: Bool = false,
-        strength: SignalStrength = .weak
+        strength: SignalStrength = .weak,
+        origin: ReasonOrigin = .rules
     ) {
         guard let found = QuoteLocator.locate(quote, in: message, caseInsensitive: caseInsensitive) else {
             return nil
@@ -134,6 +144,7 @@ nonisolated struct Reason: Identifiable, Hashable, Sendable {
         self.span = found.span
         self.explanation = explanation
         self.strength = strength
+        self.origin = origin
     }
 
     /// Builds a Reason from a range a rule has already matched. Used by the
@@ -145,7 +156,8 @@ nonisolated struct Reason: Identifiable, Hashable, Sendable {
         strength: SignalStrength,
         range: Range<String.Index>,
         in message: String,
-        explanation: String
+        explanation: String,
+        origin: ReasonOrigin = .rules
     ) {
         guard range.lowerBound >= message.startIndex,
               range.upperBound <= message.endIndex,
@@ -160,6 +172,7 @@ nonisolated struct Reason: Identifiable, Hashable, Sendable {
         )
         self.explanation = explanation
         self.strength = strength
+        self.origin = origin
     }
 }
 
@@ -186,6 +199,10 @@ nonisolated struct AnalysisResult: Identifiable, Hashable, Sendable {
     /// (e.g. the AI quoted words that aren't in the message). Shown to the
     /// user so the app is honest about it.
     let hiddenReasonCount: Int
+    /// Short, plain-language notes about HOW this answer was reached
+    /// (e.g. "the AI wasn't available, so only the rules were used").
+    /// Shown at the bottom of the result card. Honesty about the process.
+    let notes: [String]
 
     init(
         message: String,
@@ -193,7 +210,8 @@ nonisolated struct AnalysisResult: Identifiable, Hashable, Sendable {
         reasons: [Reason],
         source: AnalysisSource,
         confidence: Double? = nil,
-        hiddenReasonCount: Int = 0
+        hiddenReasonCount: Int = 0,
+        notes: [String] = []
     ) {
         self.id = UUID()
         self.message = message
@@ -202,5 +220,14 @@ nonisolated struct AnalysisResult: Identifiable, Hashable, Sendable {
         self.source = source
         self.confidence = confidence
         self.hiddenReasonCount = hiddenReasonCount
+        self.notes = notes
+    }
+
+    /// A copy of this result with extra notes appended.
+    func adding(notes extra: [String]) -> AnalysisResult {
+        AnalysisResult(
+            message: message, verdict: verdict, reasons: reasons, source: source,
+            confidence: confidence, hiddenReasonCount: hiddenReasonCount, notes: notes + extra
+        )
     }
 }

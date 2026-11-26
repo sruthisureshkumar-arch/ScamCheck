@@ -83,3 +83,25 @@ Format:
   - "See you at 6 near the station" → **Looks fine** ✅
 - No "declined to check" messages seen, so the real phone didn't show the blocking we saw in the Simulator.
 - Not yet known: whether the guided path or the permissive JSON fallback produced these answers. Phase 4's debug log will record which path ran.
+
+### 2026-11-26 · Phase 5 — first evaluation: the AI over-flags, and my combining rule let it through
+- **Who was wrong:** the on-device model (over-flagging) AND the AI assistant (combination policy v1)
+- **What happened:** On the 40-message evaluation set (iPhone 17 Pro):
+  - **AI only:** precision 0.51, recall 0.90, F0.5 0.56. It flagged 17 of 20 genuine messages: a "Do not share" OTP alert, a salary credit, a debit alert, `sbi.bank.in` / `hdfc.bank.in` / `amazon.in` links, a real job offer, a ₹50 cashback. Its "evidence" was often a whole innocent sentence ("It is valid for 5 minutes." as urgency; "Do not share this OTP with anyone." as a credential request; "It has been credited to your wallet." as a credential request).
+  - **Combined (policy v1):** precision 0.53, recall 1.00, F0.5 **0.58**, worse than the rules alone. Policy v1 showed "Suspicious" whenever rules and AI disagreed, and "Suspicious" counts as a warning, so every AI false alarm reached the user.
+  - Apple's safety filter blocked some scam messages on the real device. The JSON fallback answered; twice its JSON was also invalid → retry → once the rules fallback.
+- **How it was caught:** The Phase 5 evaluation harness (precision / F0.5 per analyzer + the list of misclassified messages).
+- **What changed:**
+  1. **Combination policy v2:** the rules decide whether to warn. The AI can confirm (both Likely scam → Likely scam) and its observations are shown as "worth noticing", but it can't raise a warning alone.
+  2. **Stricter AI evidence:** quotes ≤ 12 words; a credential quote that's a warning ("do not share") is rejected; link reasons must contain a non-official link.
+  3. **An AI flag with no surviving evidence → "Looks fine"** (was "Suspicious").
+  4. **Clearer instructions** listing genuine message types.
+  - Disclosed in EVALUATION.md: these changes were made after seeing this run.
+- **Lesson:** "Show Suspicious when unsure" sounds cautious, but when Suspicious counts as a warning it is the opposite of precision-first. Measure the combined system, not just its parts.
+
+### 2026-11-26 · Phase 5 — second evaluation run (after the fixes)
+- **Combined (policy v2):** precision 0.94, recall 0.80, F0.5 0.91. False alarms 18 → 1.
+- **AI only:** precision 0.51 → 0.68 (false alarms 17 → 9), F0.5 0.56 → 0.72.
+- **Still wrong:** `l09`, a genuine delivery OTP "share with the agent", is flagged by the rules. `s04`, `s11`, `s15`, `s19` are missed (the AI noticed something in each; shown as "worth noticing" only).
+- **AI-only false alarms that remain:** ride PIN for the driver, delivery OTP for the agent, `hdfc.bank.in` statement, Amazon tracking, a real job offer, a real collect request, a promo short link, a card replacement notice, and a food-order OTP that said "Never share it" (the model quoted "Use 7712 as your one-time password" as a credential request).
+- **Next:** fix `l09` and `s15` by adding NEW similar unit-test messages first (not by tuning on this set), then measure on a fresh set.

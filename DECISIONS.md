@@ -131,3 +131,67 @@ Why ScamCheck is built the way it is. Newest entries at the bottom. Each entry: 
 - **Decision:** Try guided generation first (with the rewritten role-first instructions). If it's blocked or refused, ask again in permissive mode for JSON text and decode it with Codable. Both answers pass the same validator.
 - **Why this is acceptable:** The app only classifies messages and quotes them back. Every quote is checked against the original message, explanations are short, and the user always decides. Apple's own examples for permissive mode are similar (working with sensitive text, not generating it).
 - **Trade-off:** The JSON-text path can produce invalid JSON or a polite refusal. That becomes an `invalidAnswer` error, which Phase 4 handles (retry once, then fall back to rules).
+
+---
+
+## Phase 4: Handling wrong answers
+
+### The model is reached through an `LLMClient` protocol
+- **Alternatives:** keep the Foundation Models calls inside the analyzer.
+- **Why:** The real model can't be made to fail on purpose. With a protocol, tests use a `ScriptedClient` that returns invalid JSON first, a good answer second, and so on, so the retry, give-up and logging rules are tested without the model, even in the Simulator. Production uses `FoundationModelsClient`. A remote model later would be another client.
+
+### Retry exactly once, sending the error back
+- **What counts as retryable:** only "the model answered, but unusably" (`invalidAnswer`): invalid JSON, a missing field, a verdict that isn't allowed, confidence outside 0–1. The retry prompt includes the exact problem (e.g. `"confidence" was 1.5 but must be between 0.0 and 1.0`).
+- **Not retried:** model unavailable, safety filter, refusal, timeout. Asking again wouldn't change them.
+- **Not retried either:** a reason quoting text that isn't in the message. That reason is dropped and logged, and the rest of the answer is still used.
+- **Why once:** each attempt takes seconds on the phone. One retry fixes most format slips; more would make the user wait for an answer that will probably still be wrong.
+
+### Combined analyzer is the new default; it never dead-ends
+- If the AI fails (after its one retry), the user gets the rules' result with a note: "The on-device AI couldn't check this message, so only the built-in rules were used."
+- "Rules" and "AI only" stay in the picker so they can be compared side by side (useful for the Phase 5 before/after).
+
+### Combination policy (CombinationPolicy.swift)
+- **Likely scam** only if rules and AI both say so, OR the rules found 2+ different kinds of strong sign (strong, quotable, deterministic evidence).
+- **Looks fine** only if both say so.
+- **Suspicious** otherwise, with a note when they disagreed.
+- An AI flag with no surviving evidence (no valid quotes) is ignored.
+- **Why:** Precision first. Neither source alone can push a message to "Likely scam" except very strong rule evidence, and disagreement is shown honestly instead of picking a side.
+- **Reasons** from both are shown, each labelled "Rules · strong/weak sign" or "AI finding". The same evidence found by both is shown once.
+
+### Local debug log
+- `DebugLog` (an actor) writes JSON lines to the app's private Application Support folder and keeps the last 500 entries. It records: AI unavailable, AI failed, JSON fallback used, invalid answer, retry succeeded, reason rejected, fell back to rules, rules/AI disagreed.
+- **Privacy:** Debug builds store the first 80 characters of the message (so failures can be copied into WRONG_ANSWERS.md); Release builds store no message text.
+- **Viewing:** a ladybug button (Debug builds only) opens the log, with "Share as Markdown" for pasting into WRONG_ANSWERS.md.
+
+---
+
+## Phase 5: Evaluation
+
+### A separate 40-message dataset, not the unit-test messages
+- **Why:** The rules were designed against the messages in `SyntheticMessageTests.swift`. Scoring them on the same messages would flatter them. The evaluation set is new, and includes genuine messages that look scammy (delivery OTP for the agent, a real job offer, a promo short link, a `.bank.in` link).
+- **Rule:** Never tune the rules by looking at evaluation failures and then re-scoring on the same set. Add a new similar unit-test message and fix against that.
+
+### Scores are printed, not asserted
+- **Why:** A score is a measurement to record before and after a change (EVALUATION.md), not a pass/fail gate. The tests still fail if the dataset is malformed (count, labels, unique ids).
+
+### "Suspicious" counts as flagged (confirmed)
+- **Why:** The user sees Suspicious as a warning. If a genuine message gets it, that's a false alarm, so it must count against precision.
+
+### AI and Combined evaluations run only on a real device
+- **Why:** The Simulator can't run the on-device model on this Mac (see WRONG_ANSWERS.md). The Rules evaluation runs anywhere.
+
+## Phase 6: Polish (essentials only)
+
+- **Done:** the input screen scrolls (very large Dynamic Type sizes never cut anything off); an empty state with "Try an example" (synthetic messages); a privacy note; VoiceOver hints and a spoken list of highlighted words; underlined highlights (visible in dark mode, not colour-only); a solid result card background.
+- **Deferred: Share Extension / App Intent.**
+  - *Risks:* A Share Extension runs in a separate, memory-limited process. It isn't certain the on-device model and the rules fit and stay responsive there, and it needs its own target, signing and testing. An App Intent (Shortcuts) is lighter but adds a second entry point to test and keep consistent.
+  - *Decision:* Not needed to demonstrate the core idea. Listed as the first "next step" in the README.
+
+## Phase 7: README
+- Written for a reviewer who has two minutes: problem → how it works (diagram) → measured results → what went wrong → limitations → next steps. Numbers in the README come only from the real evaluation run on the iPhone.
+
+### Combination policy v2 (after the first evaluation)
+- **Change:** If the rules find no warning sign, the verdict is "Looks fine" whatever the AI says. AI observations are still shown as "worth noticing". The AI can confirm a scam (both Likely scam → Likely scam) but can't raise a warning alone.
+- **Why:** The first evaluation showed the on-device AI flags most genuine messages (17/20). Under v1, disagreement became "Suspicious", which counts as a warning, so Combined precision was 0.53. Under the precision-first goal, a component with that false-alarm rate can't be allowed to raise warnings by itself.
+- **Trade-off:** Recall is now limited to what the rules catch. Scams the rules miss but the AI catches show as "Looks fine", with the AI's points listed. Accepted for precision. A better-calibrated model, or AI evidence checks strict enough to trust alone, could change this later.
+- **Also:** stricter AI evidence checks (≤ 12-word quotes, no negated credential quotes, no official links as suspicious links), and an AI flag with no surviving evidence now means "Looks fine".

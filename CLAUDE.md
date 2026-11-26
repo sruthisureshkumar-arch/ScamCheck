@@ -53,13 +53,15 @@ Rules:
 - Analysis code (rules, validation, combining) is pure Swift with no UI imports, so it can be unit tested.
 - A quote is only valid if it is an exact substring of the original message. Highlighting uses the stored range, never a re-search that could match a different spot.
 
-## Combining rules and LLM (Phase 4 policy)
+## Combining rules and LLM (Phase 4 policy, as built)
 
-- `Likely scam` only when rules and LLM agree, or when the evidence is strong (define "strong" explicitly in code and in DECISIONS.md).
-- Disagreement or weak evidence → `Suspicious`.
-- Invalid JSON or missing fields → retry once with the error message → if still invalid, fall back to the rule-based result.
-- Any LLM reason whose quote is not in the message is dropped.
-- Every failure is written to a local debug log and summarised in WRONG_ANSWERS.md.
+- POLICY v2 (after first evaluation): `Likely scam` only when rules and AI both say so, or the rules found 2+ different kinds of STRONG sign. Rules flagged but bar not met → `Suspicious`. Rules found nothing → `Looks fine` whatever the AI says (AI points shown as "worth noticing"). The AI cannot raise a warning alone.
+- AI evidence checks: quote ≤ 12 words, in the message, credential quotes not negated, link reasons must contain a non-official link. An AI flag with no surviving evidence → `Looks fine`.
+- Unusable AI answer (invalid JSON, missing field, invalid verdict/confidence) → retry ONCE with the error in the prompt → if still unusable, CombinedAnalyzer falls back to the rule-based result with a note.
+- Not retried: model unavailable, safety filter, refusal, timeout.
+- Any LLM reason whose quote is not in the message is dropped and logged (not retried).
+- Every failure goes to `DebugLog` (Application Support/debug-log.jsonl, last 500 entries; message preview only in Debug builds). The ladybug button (Debug builds) exports it as Markdown for WRONG_ANSWERS.md.
+- The model is reached only through the `LLMClient` protocol; tests use a scripted fake client.
 
 ## Testing and evaluation
 
@@ -110,3 +112,9 @@ Rules:
 - Test device: iPhone 17 Pro, iOS 27.2.1 (Apple Intelligence capable; confirm it is turned on before Phase 3)
 - Apple Developer account: free Apple Account only (no paid program). On-device builds expire after about 7 days; check any Phase 6 capability against free-account limits before building it.
 - Phase 3 plan: on-device Foundation Models is the first choice. Verify the current API and availability checks in Apple's docs before writing code. The app must still work through the rule-based analyzer when the model is unavailable (e.g. Apple Intelligence off, model still downloading, or running in a Simulator without support).
+
+## Status (Nov 2026)
+
+- Phases 1–5 and 7 built; Phase 6 essentials built (Share Extension / App Intent deferred, see DECISIONS.md).
+- Evaluation: `ScamCheckTests/Evaluation/` + EVALUATION.md (history table). Don't tune rules on the evaluation set.
+- README.md numbers must come only from a real evaluation run on the iPhone.

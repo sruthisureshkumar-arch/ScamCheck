@@ -148,13 +148,69 @@ struct LLMValidationTests {
         #expect(validated.result.reasons.map(\.quote) == ["share the OTP"])
     }
 
-    @Test func likelyScamWithoutEvidenceBecomesSuspicious() throws {
+    @Test func flagWithoutSurvivingEvidenceBecomesLooksFine() throws {
         let validated = try LLMVerdictValidator.validate(
             answer("likelyScam", 0.95, [("suspiciousLink", "http://not-in-message.com")]),
             for: message
         )
-        #expect(validated.result.verdict == .suspicious)
+        #expect(validated.result.verdict == .looksFine)
         #expect(validated.result.reasons.isEmpty)
+        #expect(!validated.result.notes.isEmpty)
+    }
+
+    // Stricter evidence checks (added after the first evaluation run).
+
+    @Test func wholeSentenceIsNotSpecificEvidence() throws {
+        let long = "Rs 2,340 debited from A/c XX4412 on 25-11-26 at a shop near the station today."
+        let validated = try LLMVerdictValidator.validate(
+            answer("suspicious", 0.8, [("urgencyOrThreat", long)]),
+            for: long
+        )
+        #expect(validated.result.reasons.isEmpty)
+        #expect(validated.rejectedReasons.first?.why.contains("too long") == true)
+    }
+
+    @Test func doNotShareIsNotACredentialRequest() throws {
+        let otp = "482913 is your OTP. Do not share this OTP with anyone."
+        let validated = try LLMVerdictValidator.validate(
+            answer("suspicious", 0.8, [("credentialRequest", "Do not share this OTP with anyone.")]),
+            for: otp
+        )
+        #expect(validated.result.reasons.isEmpty)
+        #expect(validated.result.verdict == .looksFine)
+    }
+
+    @Test(arguments: [
+        "Track it at https://www.amazon.in/track/1",
+        "Statement at https://www.hdfc.bank.in/cards",
+    ])
+    func officialLinkIsNotASuspiciousLink(_ text: String) throws {
+        let link = String(text.split(separator: " ").last!)
+        let validated = try LLMVerdictValidator.validate(
+            answer("suspicious", 0.7, [("suspiciousLink", link)]),
+            for: text
+        )
+        #expect(validated.result.reasons.isEmpty)
+        #expect(validated.rejectedReasons.first?.why.contains("official") == true)
+    }
+
+    @Test func linkReasonNeedsALink() throws {
+        let text = "XYZ Bank: your new card has been dispatched."
+        let validated = try LLMVerdictValidator.validate(
+            answer("suspicious", 0.7, [("senderLinkMismatch", "XYZ Bank")]),
+            for: text
+        )
+        #expect(validated.result.reasons.isEmpty)
+    }
+
+    @Test func lookalikeLinkIsStillAccepted() throws {
+        let text = "Verify now at http://sbi-kyc-update.com/login"
+        let validated = try LLMVerdictValidator.validate(
+            answer("likelyScam", 0.9, [("suspiciousLink", "http://sbi-kyc-update.com/login")]),
+            for: text
+        )
+        #expect(validated.result.reasons.count == 1)
+        #expect(validated.result.verdict == .likelyScam)
     }
 
     @Test func looksFineWithNoReasonsIsFine() throws {

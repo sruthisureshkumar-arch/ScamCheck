@@ -32,7 +32,7 @@ struct ResultCardView: View {
                         Text(result.verdict == .looksFine ? "Worth noticing" : "Why")
                             .font(.headline)
                         ForEach(result.reasons) { reason in
-                            ReasonRow(reason: reason, isFromAI: result.source == .llm)
+                            ReasonRow(reason: reason)
                         }
                     }
                 }
@@ -41,6 +41,11 @@ struct ResultCardView: View {
                     Text("Your message")
                         .font(.headline)
                     Text(highlightedMessage)
+                        .accessibilityLabel("Your message")
+                        .accessibilityValue(result.message)
+                        .accessibilityHint(result.reasons.isEmpty
+                            ? "Nothing highlighted."
+                            : "Highlighted words: " + result.reasons.map(\.quote).joined(separator: ", "))
                         .padding(12)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .background(Color.secondary.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
@@ -57,10 +62,13 @@ struct ResultCardView: View {
                     case .llm:
                         Text("Checked by Apple's on-device AI. Your message didn't leave your phone. AI can be wrong, so look at the highlighted words yourself.")
                     case .combined:
-                        EmptyView()
+                        Text("Checked with built-in rules and Apple's on-device AI. Your message didn't leave your phone. Each reason says which one found it.")
                     }
                     if let confidence = result.confidence {
                         Text("AI confidence: \(Int((confidence * 100).rounded()))%")
+                    }
+                    ForEach(result.notes, id: \.self) { note in
+                        Text(note)
                     }
                     if result.hiddenReasonCount > 0 {
                         Text(result.hiddenReasonCount == 1
@@ -107,6 +115,7 @@ struct ResultCardView: View {
                 // Background colour + bold, so the highlight isn't colour-only.
                 piece.backgroundColor = .yellow.opacity(0.35)
                 piece.font = .body.bold()
+                piece.underlineStyle = .single   // still visible in dark mode / high contrast
             }
             output += piece
         }
@@ -152,7 +161,14 @@ private struct VerdictHeader: View {
 
 private struct ReasonRow: View {
     let reason: Reason
-    var isFromAI = false
+
+    /// Where this reason came from, and how much it counts.
+    private var label: String {
+        switch reason.origin {
+        case .ai: "AI finding"
+        case .rules: reason.strength == .strong ? "Rules · strong sign" : "Rules · weak sign"
+        }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -160,7 +176,7 @@ private struct ReasonRow: View {
                 Label(reason.category.title, systemImage: reason.category.symbolName)
                     .font(.subheadline.bold())
                 Spacer()
-                Text(isFromAI ? "AI finding" : (reason.strength == .strong ? "Strong sign" : "Weak sign"))
+                Text(label)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
